@@ -5,6 +5,7 @@ import math
 from typing import List, Iterator, Tuple, Optional
 import fitz
 import pytesseract
+import os
 
 
 def rotation(image: np.ndarray, angle_in_degrees: float) -> np.ndarray:
@@ -30,6 +31,8 @@ def rotation(image: np.ndarray, angle_in_degrees: float) -> np.ndarray:
 def find_templ(in_img: np.ndarray, templ: np.ndarray, thr: float = 0.05) -> List[Tuple[int, int]]:
     """Find template with mask in input image and return the list of founded points"""
     mask = cv.threshold(templ, 160, 255, cv.THRESH_BINARY_INV)[1]
+    if in_img.shape[0] <= templ.shape[0] or in_img.shape[1] <= templ.shape[1]:
+        return []
     result = cv.matchTemplate(in_img, templ, cv.TM_SQDIFF, None, mask)
     cv.normalize(result, result, 0, 1, cv.NORM_MINMAX, -1)
     min_val, max_val, min_loc, max_loc = cv.minMaxLoc(result)
@@ -156,6 +159,30 @@ def print_res(r: dict, out_file: str = None) -> None:
         print(r["po"].replace("\n", " ") + ";", file=f)
 
 
+def print_res_test(r: dict, in_file: str, out_file: str = None) -> None:
+    """Print dictionary into file or stdout with formatting"""
+    if out_file is not None:
+        f = open(out_file, "w")
+    else:
+        f = sys.stdout
+
+    res_str = in_file + ";"
+
+    if "Au" in r.keys():
+        res_str += r["Au"].replace("\n", " ") + ";"
+    else:
+        res_str += ";"
+    if "po" in r.keys():
+        res_str += r["po"].replace("\n", " ") + ";"
+    else:
+        res_str += ";"
+
+    for form in r["forms"]:
+        res_str += str(form["okpo"]) + ";" + str(form["name"]) + ";" + str(form["inn"]) + ";" + str(
+            form["time"]) + ";"
+    print(res_str, file=f)
+
+
 def find_small_table(thr_inv_img: np.ndarray) -> List[int]:
     """Find in contours in input binary image small table, return [x_min, x_max, y_min, y_max]"""
     contours0 = cv.findContours(thr_inv_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)[0]
@@ -246,7 +273,7 @@ def find_corners(thr_img: np.ndarray) -> Tuple[List[Tuple[int, int]], List[Tuple
     """Return finding corners in input image"""
     w = 100
     h = 50
-    if thr_img.sum() / 255 < 7400000:
+    if thr_img.sum() / 255 < 8400000:
         return [], [], [], []
     lu_c = [((p[0] - w // 2, p[1] - h // 2), 0) for p in find_templ(thr_img, get_corner_template(0, w, h))]
     if len(lu_c) == 0:
@@ -399,6 +426,8 @@ if __name__ == "__main__":
     numb_of_page = 0
     for page in load_file_using_fitz(file_name):
         numb_of_page += 1
+        if numb_of_page > 20:
+            break
         img = np.reshape(np.frombuffer(page.samples, dtype=np.uint8), [page.height, page.width])
         table = find_head_and_table(img)
         if bool(table):
@@ -425,7 +454,10 @@ if __name__ == "__main__":
                                                                                 'inn'] is not None else None
         res["forms"][i]['head'] = recog_text_full(res["forms"][i]['head']).replace("\n\n", "\n").split("\n")[:2]
         res["forms"][i]['name'] = res["forms"][i]['head'][0].replace(";", "").replace("\"", "")
-        res["forms"][i]['time'] = res["forms"][i]['head'][1].replace(";", "").replace("\"", "")
+        if len(res["forms"][i]['head']) > 1:
+            res["forms"][i]['time'] = res["forms"][i]['head'][1].replace(";", "").replace("\"", "")
+        else:
+            res["forms"][i]['time'] = res["forms"][i]['head'][0].replace(";", "").replace("\"", "")
         del res["forms"][i]['head']
 
     if "Au" in res.keys():
