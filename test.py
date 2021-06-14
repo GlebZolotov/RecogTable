@@ -183,10 +183,11 @@ def print_res_test(r: dict, in_file: str, out_file: str = None) -> None:
     print(res_str, file=f)
 
 
-def find_small_table(thr_inv_img: np.ndarray) -> List[int]:
+def find_small_table(thr_inv_img: np.ndarray) -> Tuple[int]:
     """Find in contours in input binary image small table, return [x_min, x_max, y_min, y_max]"""
     contours0 = cv.findContours(thr_inv_img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)[0]
 
+    tables = []
     for cont in contours0:
         if cv.contourArea(cont) < 50000:
             continue
@@ -195,12 +196,13 @@ def find_small_table(thr_inv_img: np.ndarray) -> List[int]:
         box = np.int0(box)  # округление координат\
         area = cv.contourArea(box)  # вычисление площади
         if 50000 < area < 500000 and math.fabs(area - cv.contourArea(cont)) < 40000:
-            return [min((coord[0] for coord in box)), max((coord[0] for coord in box)),
-                    min((coord[1] for coord in box)), max((coord[1] for coord in box))]
-    return []
+            tables.append((area, min((coord[0] for coord in box)), max((coord[0] for coord in box)),
+                           min((coord[1] for coord in box)), max((coord[1] for coord in box))))
+    return [] if len(tables) == 0 else sorted(tables, key=lambda ar: ar[0])[-1][1:]
 
 
-def points_of_table(table_img: np.ndarray, templ_1: np.ndarray, templ_2: np.ndarray) -> Tuple[Optional[List[Tuple[int, int]]], Optional[List[Tuple[int, int]]]]:
+def points_of_table(table_img: np.ndarray, templ_1: np.ndarray, templ_2: np.ndarray) -> Tuple[
+    Optional[List[Tuple[int, int]]], Optional[List[Tuple[int, int]]]]:
     """In input image find vertical and gorizontal lines (templs) and return it's coordinates"""
     gor_points = sorted(find_templ(table_img, templ_1), key=lambda coord: coord[1])
     vert_points = sorted(find_templ(table_img, templ_2), key=lambda coord: coord[0])
@@ -269,7 +271,8 @@ def first_cut_and_rotate(in_img: np.ndarray) -> Optional[np.ndarray]:
     return rotation(in_img, angle)
 
 
-def find_corners(thr_img: np.ndarray) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]]]:
+def find_corners(thr_img: np.ndarray) -> Tuple[
+    List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]], List[Tuple[int, int]]]:
     """Return finding corners in input image"""
     w = 100
     h = 50
