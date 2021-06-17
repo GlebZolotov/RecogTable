@@ -150,7 +150,7 @@ def print_res(r: dict, out_file: str = None) -> None:
     print(len(r["forms"]), file=f)
     for form in r["forms"]:
         print(str(form["okpo"]) + ";" + str(form["name"]) + ";" + str(form["inn"]) + ";" + str(
-            form["time"]) + ";", file=f)
+            form["name_company"]) + ";" + str(form["time"]) + ";" + str(form["date"]) + ";", file=f)
     if "Au" in r.keys():
         print("au", file=f)
         print(r["Au"].replace("\n", " ") + ";", file=f)
@@ -371,6 +371,7 @@ def find_head_and_table(in_img: np.ndarray) -> dict:
 
     okud_title = None
     inn_title = None
+    date_title = None
     end_titles = edges[0] - 30 + left_points[0][0] - 2
     thr_res = cv.threshold(cv.medianBlur(res_img, 3), 220, 255, cv.THRESH_BINARY_INV | cv.THRESH_OTSU)[1]
     for i_ in range(len(left_points) - 1):
@@ -381,13 +382,15 @@ def find_head_and_table(in_img: np.ndarray) -> dict:
         if pos <= end_titles - 500:
             continue
         res_str = recog_text_full(cv.copyMakeBorder(
-            res_img[edges[2] - 30 + left_points[i_][1]:edges[2] - 30 + left_points[i_ + 1][1], pos - 200:pos + 5], 20,
+            res_img[edges[2] - 30 + left_points[i_][1]:edges[2] - 30 + left_points[i_ + 1][1], pos - 400:pos + 5], 20,
             20, 20, 20,
             cv.BORDER_CONSTANT, value=255)).upper()
         if res_str.find("ОКУД") != -1:
             okud_title = i_
         elif res_str.find("ИНН") != -1:
             inn_title = i_
+        elif res_str.find("ДАТА") != -1:
+            date_title = i_
 
     # cut okpo
     if okud_title is not None:
@@ -413,18 +416,23 @@ def find_head_and_table(in_img: np.ndarray) -> dict:
     else:
         res['inn'] = None
 
-    res['head'] = res_img[50: edges[2] - 30 + left_points[2][1] - 10, 200: edges[0] - 30 + left_points[2][0] - 100]
+    if date_title is not None:
+        x_1_1 = (left_points[date_title][0] + left_points[date_title][0]) // 2 + edges[0] - 30
+        x_1_2 = (right_points[date_title][0] + right_points[date_title + 1][0]) // 2 + edges[0] - 30
+        y_1_1 = (left_points[date_title][1] + right_points[date_title][1]) // 2 + edges[2] - 30
+        y_1_2 = (left_points[date_title + 1][1] + right_points[date_title + 1][1]) // 2 + edges[2] - 30
+        res['date'] = cv.copyMakeBorder(res_img[y_1_1 + 5:y_1_2 - 2, x_1_1 + 7:x_1_2], 20, 20, 20, 20,
+                                        cv.BORDER_CONSTANT,
+                                        value=255)
+    else:
+        res['date'] = None
+
+    res['head'] = res_img[50: edges[2] - 30 + left_points[2][1] - 10 + 200,
+                  200: edges[0] - 30 + left_points[2][0] - 300]
     return res
 
 
-if __name__ == "__main__":
-    mode = sys.argv[1]
-    file_name = sys.argv[2]
-    output_file = None if len(sys.argv) < 4 else sys.argv[3]
-    # for file_name in [os.path.join(path, name) for name in os.listdir(path) if
-    #                   os.path.splitext(name)[1] == ".pdf" or os.path.splitext(name)[1] == ".PDF"]:
-    #     res_str = os.path.split(file_name)[1] + ";"
-
+def recog_file(file_name, mode, output_file):
     res = {"forms": []}
     numb_of_page = 0
     for page in load_file_using_fitz(file_name):
@@ -455,13 +463,29 @@ if __name__ == "__main__":
                                                                                   'okpo'] is not None else None
         res["forms"][i]['inn'] = recog_numb_full(res["forms"][i]['inn']) if res["forms"][i][
                                                                                 'inn'] is not None else None
-        res["forms"][i]['head'] = recog_text_full(res["forms"][i]['head']).replace("\n\n", "\n").split("\n")[:2]
-        res["forms"][i]['name'] = res["forms"][i]['head'][0].replace(";", "").replace("\"", "")
-        if len(res["forms"][i]['head']) > 1:
-            res["forms"][i]['time'] = res["forms"][i]['head'][1].replace(";", "").replace("\"", "")
-        else:
-            res["forms"][i]['time'] = res["forms"][i]['head'][0].replace(";", "").replace("\"", "")
+        res["forms"][i]['date'] = recog_numb_full(res["forms"][i]['date']) if res["forms"][i][
+                                                                                  'date'] is not None else None
+
+        head_text = recog_text_full(res["forms"][i]['head']).replace("\n\n", "\n").split("\n")
+        for ind_in_head in enumerate(head_text):
+            source_str = ind_in_head[1].lower().replace(";", "").replace("\"", "")
+            if source_str.find("бухгалтерский баланс") != -1 or source_str.find(
+                    "отчет о финансовых результатах") != -1 or source_str.find(
+                    "отчет об изменениях капитала") != -1 or source_str.find(
+                    "отчет о движении денежных средств") != -1:
+                res["forms"][i]['name'] = source_str
+                if ind_in_head[0] < len(head_text) - 1:
+                    res["forms"][i]['time'] = head_text[ind_in_head[0] + 1]
+            elif ind_in_head[1].lower().replace(";", "").find("организация") != -1:
+                res["forms"][i]['name_company'] = ind_in_head[1].lower().replace(";", "")
+                break
         del res["forms"][i]['head']
+        if 'name' not in res["forms"][i].keys():
+            res["forms"][i]['name'] = None
+        if 'time' not in res["forms"][i].keys():
+            res["forms"][i]['time'] = None
+        if 'name_company' not in res["forms"][i].keys():
+            res["forms"][i]['name_company'] = None
 
     if "Au" in res.keys():
         res["Au"] = recog_text_full(res["Au"]).replace("\n\n", "\n").replace(";", "").replace("\"", "")
@@ -469,3 +493,17 @@ if __name__ == "__main__":
         res["po"] = recog_text_full(res["po"]).replace("\n\n", "\n").replace(";", "").replace("\"", "")
 
     print_res(res, output_file)
+
+
+if __name__ == "__main__":
+    mode = int(sys.argv[1])
+    path = sys.argv[2]
+    output_file = None if len(sys.argv) < 4 else sys.argv[3]
+    if mode == 3:
+        mode = 2
+        for file_name in [os.path.join(path, name) for name in os.listdir(path) if
+                          os.path.splitext(name)[1].lower() == ".pdf"]:
+            recog_file(file_name, mode, output_file)
+    else:
+        file_name = path
+        recog_file(file_name, mode, output_file)
