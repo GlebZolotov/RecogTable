@@ -459,11 +459,11 @@ def recog_file(file_name, mode, output_file):
                 break
 
     for i in range(len(res["forms"])):
-        res["forms"][i]['okpo'] = recog_numb_full(res["forms"][i]['okpo']) if res["forms"][i][
+        res["forms"][i]['okpo'] = recog_numb_full(res["forms"][i]['okpo']).replace("\n", "") if res["forms"][i][
                                                                                   'okpo'] is not None else None
-        res["forms"][i]['inn'] = recog_numb_full(res["forms"][i]['inn']) if res["forms"][i][
+        res["forms"][i]['inn'] = recog_numb_full(res["forms"][i]['inn']).replace("\n", "") if res["forms"][i][
                                                                                 'inn'] is not None else None
-        res["forms"][i]['date'] = recog_numb_full(res["forms"][i]['date']) if res["forms"][i][
+        res["forms"][i]['date'] = recog_numb_full(res["forms"][i]['date']).replace("\n", "") if res["forms"][i][
                                                                                   'date'] is not None else None
 
         head_text = recog_text_full(res["forms"][i]['head']).replace("\n\n", "\n").split("\n")
@@ -477,7 +477,10 @@ def recog_file(file_name, mode, output_file):
                 if ind_in_head[0] < len(head_text) - 1:
                     res["forms"][i]['time'] = head_text[ind_in_head[0] + 1]
             elif ind_in_head[1].lower().replace(";", "").find("организация") != -1:
-                res["forms"][i]['name_company'] = ind_in_head[1].lower().replace(";", "")
+                if ind_in_head[0] >= 1:
+                    res["forms"][i]['name_company'] = "".join(head_text[ind_in_head[0] - 1:]).lower().replace(";", "")
+                else:
+                    res["forms"][i]['name_company'] = "".join(head_text).lower().replace(";", "")
                 break
         del res["forms"][i]['head']
         if 'name' not in res["forms"][i].keys():
@@ -503,6 +506,7 @@ if __name__ == "__main__":
         mode = 2
         for file_name in [os.path.join(path, name) for name in os.listdir(path) if
                           os.path.splitext(name)[1].lower() == ".pdf"]:
+            print(file_name)
             recog_file(file_name, mode, output_file)
     else:
         file_name = path
